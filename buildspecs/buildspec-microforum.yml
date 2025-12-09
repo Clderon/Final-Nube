@@ -1,0 +1,48 @@
+version: 0.2
+
+env:
+  variables:
+    AWS_REGION: "us-east-1"
+    PROJECT_NAME: "microforum"
+    USERS_REPO:    "172934159782.dkr.ecr.us-east-1.amazonaws.com/microforum-users"
+    POSTS_REPO:    "172934159782.dkr.ecr.us-east-1.amazonaws.com/microforum-posts"
+    THREADS_REPO:  "172934159782.dkr.ecr.us-east-1.amazonaws.com/microforum-threads"
+
+phases:
+  pre_build:
+    commands:
+      - echo "Logging in to Amazon ECR..."
+      - aws --version
+      - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin ${USERS_REPO%/*}
+      - "COMMIT_SHA=$(echo \"$CODEBUILD_RESOLVED_SOURCE_VERSION\" | cut -c1-7); IMAGE_TAG=${COMMIT_SHA:-latest}; echo \"Using image tag: $IMAGE_TAG\""
+
+  build:
+    commands:
+      - echo "Building Docker images for users, posts, threads..."
+      - docker build -t $USERS_REPO:$IMAGE_TAG ./users
+      - docker build -t $POSTS_REPO:$IMAGE_TAG ./posts
+      - docker build -t $THREADS_REPO:$IMAGE_TAG ./threads
+
+  post_build:
+    commands:
+      - echo "Pushing images to ECR..."
+      - docker push $USERS_REPO:$IMAGE_TAG
+      - docker push $POSTS_REPO:$IMAGE_TAG
+      - docker push $THREADS_REPO:$IMAGE_TAG
+
+      - docker tag $USERS_REPO:$IMAGE_TAG $USERS_REPO:latest
+      - docker tag $POSTS_REPO:$IMAGE_TAG $POSTS_REPO:latest
+      - docker tag $THREADS_REPO:$IMAGE_TAG $THREADS_REPO:latest
+
+      - docker push $USERS_REPO:latest
+      - docker push $POSTS_REPO:latest
+      - docker push $THREADS_REPO:latest
+
+      - echo "Writing imagedefinitions.json for deploy stage"
+      - "printf '[{\"name\":\"users\",\"imageUri\":\"%s\"},{\"name\":\"posts\",\"imageUri\":\"%s\"},{\"name\":\"threads\",\"imageUri\":\"%s\"}]\\n' \"$USERS_REPO:$IMAGE_TAG\" \"$POSTS_REPO:$IMAGE_TAG\" \"$THREADS_REPO:$IMAGE_TAG\" > imagedefinitions.json"
+      - echo "imagedefinitions.json:"
+      - cat imagedefinitions.json
+
+artifacts:
+  files:
+    - imagedefinitions.json
