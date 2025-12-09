@@ -33,6 +33,7 @@ Comun en todos:
 ```bash
 docker compose up --build
 
+# Health checks ya estan implementados en cada server.js
 curl http://localhost:3001/health   # users
 curl http://localhost:3002/health   # posts
 curl http://localhost:3003/health   # threads
