@@ -456,14 +456,13 @@ resource "aws_ecs_task_definition" "service" {
         }
       ]
 
-      environment = [
-        { name = "DB_HOST", value = aws_db_instance.microforum_rds.address },
-        { name = "DB_USER", value = "admin" },
-        { name = "DB_PASS", value = var.db_pass },
-        { name = "DB_NAME", value = "microforum" },
-        { name = "DB_PORT", value = "3306" }
-      ]
-
+      # ✅ SOLO "users" recibe DATABASE_URL
+      environment = each.key == "users" ? [
+        {
+          name  = "DATABASE_URL"
+          value = "mysql://admin:${var.db_pass}@${aws_db_instance.microforum_rds.address}:3306/microforum"
+        }
+      ] : []
 
       logConfiguration = {
         logDriver = "awslogs"
@@ -475,8 +474,8 @@ resource "aws_ecs_task_definition" "service" {
       }
     }
   ])
-
 }
+
 
 # ----------------------
 # ECS Services (users, posts, threads)
@@ -492,7 +491,7 @@ resource "aws_ecs_service" "service" {
 
   # posts -> CODE_DEPLOY, users/threads -> ECS
   deployment_controller {
-    type = each.key == "posts" ? "CODE_DEPLOY" : "ECS"
+    type = "ECS"
   }
 
   network_configuration {

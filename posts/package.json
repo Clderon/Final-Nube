@@ -1,9 +1,10 @@
 {
   "dependencies": {
-    "@prisma/client": "^7.1.0",
+    "@koa/router": "^15.0.0",
     "koa": "^1.2.5",
+    "koa-bodyparser": "^4.4.1",
     "koa-router": "^5.4.0",
-    "prisma": "^7.1.0"
+    "mysql2": "^3.15.3"
   },
   "scripts": {
     "start": "node server.js"
