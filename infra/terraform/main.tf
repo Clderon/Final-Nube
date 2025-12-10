@@ -447,6 +447,7 @@ resource "aws_ecs_task_definition" "service" {
       name      = each.key
       image     = var.container_images[each.key]
       essential = true
+
       portMappings = [
         {
           containerPort = 3000
@@ -454,6 +455,15 @@ resource "aws_ecs_task_definition" "service" {
           protocol      = "tcp"
         }
       ]
+
+      # 🔥 Solo el servicio users tendrá la variable DATABASE_URL
+      environment = each.key == "users" ? [
+        {
+          name  = "DATABASE_URL"
+          value = "mysql://admin:TU_PASSWORD_AQUI@${aws_db_instance.microforum_rds.address}:3306/microforum"
+        }
+      ] : []
+
       logConfiguration = {
         logDriver = "awslogs"
         options = {
@@ -464,6 +474,7 @@ resource "aws_ecs_task_definition" "service" {
       }
     }
   ])
+
 }
 
 # ----------------------

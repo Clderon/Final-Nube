@@ -1,59 +1,49 @@
-const app = require('koa')();
-const router = require('koa-router')();
-const db = require('./db.json');
+const Koa = require('koa');
+const Router = require('koa-router');
+const { PrismaClient } = require('@prisma/client');
 
-// Log requests
-app.use(function *(next){
-  const start = new Date;
-  yield next;
-  const ms = new Date - start;
-  console.log('%s %s - %s', this.method, this.url, ms);
+const app = new Koa();
+const router = new Router();
+const prisma = new PrismaClient();
+
+// Log de requests
+app.use(async (ctx, next) => {
+  const start = Date.now();
+  await next();
+  console.log(`${ctx.method} ${ctx.url} - ${Date.now() - start}ms`);
 });
 
 // Health check
-router.get('/health', function *() {
-  this.status = 200;
-  this.body = { ok: true, service: 'users', uptime: process.uptime() };
+router.get('/health', (ctx) => {
+  ctx.body = { ok: true, service: 'users', uptime: process.uptime() };
 });
 
-//
-// -------- API-style routes --------
-//
-router.get('/api/users', function *() {
-  this.body = db.users;
+// Obtener todos los usuarios
+router.get('/users', async (ctx) => {
+  ctx.body = await prisma.user.findMany();
 });
 
-router.get('/api/users/:userId', function *() {
-  const id = parseInt(this.params.userId);
-  this.body = db.users.find((user) => user.id == id);
+// Obtener usuario por ID
+router.get('/users/:userId', async (ctx) => {
+  ctx.body = await prisma.user.findUnique({
+    where: { id: Number(ctx.params.userId) }
+  });
 });
 
-router.get('/api/', function *() {
-  this.body = "API ready to receive requests";
+// Crear usuario
+router.post('/users', async (ctx) => {
+  const data = ctx.request.body; // requiere bodyparser
+  ctx.body = await prisma.user.create({ data });
 });
 
-//
-// -------- Friendly routes for ALB (/users...) --------
-//
-router.get('/users', function *() {
-  this.body = db.users;
+// Root
+router.get('/', (ctx) => {
+  ctx.body = "Users Service - OK";
 });
 
-router.get('/users/:userId', function *() {
-  const id = parseInt(this.params.userId);
-  this.body = db.users.find((user) => user.id == id);
-});
+app
+  .use(require('koa-bodyparser')())
+  .use(router.routes())
+  .use(router.allowedMethods());
 
-//
-// -------- Root --------
-//
-router.get('/', function *() {
-  this.body = "Ready to receive requests";
-});
-
-app.use(router.routes());
-app.use(router.allowedMethods());
-
-app.listen(3000);
-
-console.log('Users worker started');
+app.listen(3000, () => console.log('Users service running on port 3000'));
