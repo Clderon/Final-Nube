@@ -1,4 +1,4 @@
-FROM mhart/alpine-node:7.10.1
+FROM node:18-alpine
 
 WORKDIR /srv
 ADD . .
