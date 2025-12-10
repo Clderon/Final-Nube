@@ -2,17 +2,17 @@
  "threads": [
     {
       "id": 1,
-      "title": "Did you see the Brazil game?",
+      "title": "D",
       "createdBy": 4
     },
     {
       "id": 2,
-      "title": "New French bakery opening in the neighborhood tomorrow",
+      "title": "N",
       "createdBy": 3
     },
     {
       "id": 3,
-      "title": "In search of a new guitar",
+      "title": "I",
       "createdBy": 1
     }
   ]
