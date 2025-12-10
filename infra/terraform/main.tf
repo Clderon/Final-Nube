@@ -191,6 +191,67 @@ resource "aws_security_group" "ecs_tasks_sg" {
 }
 
 # ----------------------
+# RDS MySQL (usa VPC y subredes privadas existentes)
+# ----------------------
+
+resource "aws_db_subnet_group" "microforum_db_subnets" {
+  name       = "${var.project_name}-db-subnet-group"
+  subnet_ids = aws_subnet.private[*].id  # reutiliza tus subredes privadas
+
+  tags = {
+    Name = "${var.project_name}-db-subnet-group"
+  }
+}
+
+resource "aws_security_group" "rds_sg" {
+  name        = "${var.project_name}-rds-sg"
+  description = "Allow ECS tasks to access RDS"
+  vpc_id      = aws_vpc.this.id
+
+  # Solo permite acceso desde las tareas ECS (no desde Internet)
+  ingress {
+    from_port       = 3306
+    to_port         = 3306
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ecs_tasks_sg.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "${var.project_name}-rds-sg"
+  }
+}
+
+resource "aws_db_instance" "microforum_rds" {
+  identifier              = "${var.project_name}-db"
+  engine                  = "mysql"
+  engine_version          = "8.0"
+  instance_class          = "db.t3.micro"        # compatible con free tier
+  allocated_storage       = 20
+  username                = "admin"
+  password                = "Admin123!"          # cámbiala luego
+  db_name                 = "microforum"
+  port                    = 3306
+  publicly_accessible     = false                # solo dentro de la VPC
+  vpc_security_group_ids  = [aws_security_group.rds_sg.id]
+  db_subnet_group_name    = aws_db_subnet_group.microforum_db_subnets.name
+  multi_az                = false
+  skip_final_snapshot     = true
+
+  tags = {
+    Name = "${var.project_name}-rds"
+  }
+}
+
+
+
+# ----------------------
 # Application Load Balancer
 # ----------------------
 resource "aws_lb" "app" {
@@ -438,6 +499,7 @@ resource "aws_ecs_service" "service" {
     ignore_changes = [
       task_definition,
       desired_count,
+      load_balancer,
     ]
   }
 

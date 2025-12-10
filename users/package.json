@@ -1,7 +1,9 @@
 {
   "dependencies": {
+    "@prisma/client": "^7.1.0",
     "koa": "^1.2.5",
-    "koa-router": "^5.4.0"
+    "koa-router": "^5.4.0",
+    "prisma": "^7.1.0"
   },
   "scripts": {
     "start": "node server.js"

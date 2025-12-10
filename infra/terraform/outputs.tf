@@ -9,3 +9,8 @@ output "alb_dns_name" {
 output "ecs_cluster_name" {
   value = aws_ecs_cluster.this.name
 }
+
+output "rds_endpoint" {
+  description = "RDS connection endpoint"
+  value       = aws_db_instance.microforum_rds.endpoint
+}
