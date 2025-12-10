@@ -215,18 +215,22 @@ data "aws_iam_policy_document" "codedeploy_assume_role" {
   }
 }
 
+# Make CodeDeploy IAM role optional based on variable
 resource "aws_iam_role" "codedeploy_role" {
+  count              = var.enable_codedeploy ? 1 : 0
   name               = "${var.project_name}-codedeploy-role"
   assume_role_policy = data.aws_iam_policy_document.codedeploy_assume_role.json
 }
 
 resource "aws_iam_role_policy_attachment" "codedeploy_managed" {
-  role       = aws_iam_role.codedeploy_role.name
+  count      = var.enable_codedeploy ? 1 : 0
+  role       = aws_iam_role.codedeploy_role[0].name
   policy_arn = "arn:aws:iam::aws:policy/AWSCodeDeployRoleForECS"
 }
 
 # CodeDeploy application for ECS
 resource "aws_codedeploy_app" "microforum" {
+  count            = var.enable_codedeploy ? 1 : 0
   name             = "${var.project_name}-ecs-app"
   compute_platform = "ECS"
 }
@@ -240,9 +244,10 @@ resource "aws_codedeploy_app" "microforum" {
 #   aws_lb_target_group.posts_green
 
 resource "aws_codedeploy_deployment_group" "microforum" {
-  app_name               = aws_codedeploy_app.microforum.name
+  count                   = var.enable_codedeploy ? 1 : 0
+  app_name               = aws_codedeploy_app.microforum[0].name
   deployment_group_name  = "${var.project_name}-dg"
-  service_role_arn       = aws_iam_role.codedeploy_role.arn
+  service_role_arn       = aws_iam_role.codedeploy_role[0].arn
   deployment_config_name = "CodeDeployDefault.ECSAllAtOnce"
 
   deployment_style {
@@ -340,28 +345,31 @@ resource "aws_codepipeline" "microforum" {
   }
 
   # -------- Stage 3: Deploy (ECS Blue/Green via CodeDeploy) --------
-  stage {
-    name = "Deploy"
+  dynamic "stage" {
+    for_each = var.enable_codedeploy ? [1] : []
+    content {
+      name = "Deploy"
 
-    action {
-      name     = "DeployToECSBlueGreen"
-      category = "Deploy"
-      owner    = "AWS"
-      provider = "CodeDeployToECS"
-      version  = "1"
+      action {
+        name     = "DeployToECSBlueGreen"
+        category = "Deploy"
+        owner    = "AWS"
+        provider = "CodeDeployToECS"
+        version  = "1"
 
-      # We only need SourceOutput here for appspec.yaml + taskdef.json
-      input_artifacts = ["SourceOutput"]
+        # We only need SourceOutput here for appspec.yaml + taskdef.json
+        input_artifacts = ["SourceOutput"]
 
-      configuration = {
-        ApplicationName     = aws_codedeploy_app.microforum.name
-        DeploymentGroupName = aws_codedeploy_deployment_group.microforum.deployment_group_name
+        configuration = {
+          ApplicationName     = aws_codedeploy_app.microforum[0].name
+          DeploymentGroupName = aws_codedeploy_deployment_group.microforum[0].deployment_group_name
 
-        TaskDefinitionTemplateArtifact = "SourceOutput"
-        TaskDefinitionTemplatePath     = "taskdef.json"
+          TaskDefinitionTemplateArtifact = "SourceOutput"
+          TaskDefinitionTemplatePath     = "taskdef.json"
 
-        AppSpecTemplateArtifact = "SourceOutput"
-        AppSpecTemplatePath     = "appspec.yaml"
+          AppSpecTemplateArtifact = "SourceOutput"
+          AppSpecTemplatePath     = "appspec.yaml"
+        }
       }
     }
   }

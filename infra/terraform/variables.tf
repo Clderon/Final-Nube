@@ -15,8 +15,14 @@ variable "container_images" {
   type        = map(string)
 
   default = {
-    users   = "172934159782.dkr.ecr.us-east-1.amazonaws.com/microforum-users:latest"
-    posts   = "172934159782.dkr.ecr.us-east-1.amazonaws.com/microforum-posts:latest"
-    threads = "172934159782.dkr.ecr.us-east-1.amazonaws.com/microforum-threads:latest"
+    users   = "748699405709.dkr.ecr.us-east-1.amazonaws.com/microforum-users:latest"
+    posts   = "748699405709.dkr.ecr.us-east-1.amazonaws.com/microforum-posts:latest"
+    threads = "748699405709.dkr.ecr.us-east-1.amazonaws.com/microforum-threads:latest"
   }
+}
+
+variable "enable_codedeploy" {
+  description = "Enable CodeDeploy-based blue/green deploy (posts). Set false if account lacks CodeDeploy subscription"
+  type        = bool
+  default     = false
 }
