@@ -1,5 +1,5 @@
 const Koa = require('koa');
-const Router = require('koa-router');
+const Router = require('@koa/router');
 const bodyParser = require('koa-bodyparser');
 const mysql = require('mysql2/promise');
 const fs = require('fs');
@@ -7,7 +7,6 @@ const fs = require('fs');
 const app = new Koa();
 const router = new Router();
 
-// 🔥 Variables vienen del Task Definition en ECS
 const DB_HOST = process.env.DB_HOST;
 const DB_USER = "admin";
 const DB_PASS = process.env.DB_PASS;
@@ -16,44 +15,46 @@ const DB_NAME = "microforum";
 let db;
 
 // ----------------------
-// Conexión MySQL
+// Conexión MySQL correcta
 // ----------------------
 async function initDB() {
-  db = await mysql.createConnection({
-    host: DB_HOST,
-    user: DB_USER,
-    password: DB_PASS,
-    database: DB_NAME
-  });
+  try {
+    db = await mysql.createConnection({
+      host: DB_HOST,
+      user: DB_USER,
+      password: DB_PASS,
+      database: DB_NAME
+    });
 
-  console.log("📌 Conectado a MySQL RDS");
+    console.log("📌 Conectado a MySQL RDS");
 
-  // Crear tabla si no existe
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS users (
-      id INT PRIMARY KEY AUTO_INCREMENT,
-      name VARCHAR(100),
-      email VARCHAR(100)
-    )
-  `);
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS users (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        name VARCHAR(100),
+        email VARCHAR(100)
+      )
+    `);
 
-  console.log("📦 Tabla users lista");
+    console.log("📦 Tabla users lista");
 
-  // Cargar JSON si la tabla está vacía
-  const [rows] = await db.query("SELECT COUNT(*) AS total FROM users");
-  if (rows[0].total === 0) {
-    const seed = JSON.parse(fs.readFileSync('./db.json')).users || [];
-    for (const u of seed) {
-      await db.query("INSERT INTO users (name, email) VALUES (?, ?)", [u.name, u.email]);
+    const [rows] = await db.query("SELECT COUNT(*) AS total FROM users");
+
+    if (rows[0].total === 0) {
+      const seed = JSON.parse(fs.readFileSync('./db.json')).users || [];
+      for (const u of seed) {
+        await db.query("INSERT INTO users (name, email) VALUES (?, ?)", [u.name, u.email]);
+      }
+      console.log("🌱 Seed inicial insertado");
     }
-    console.log("🌱 Seed inicial insertado desde db.json");
+
+  } catch (err) {
+    console.error("❌ Error conectando a MySQL:", err);
+    process.exit(1); // ECS reinicia el container automáticamente
   }
 }
 
-initDB();
-
 // ---------------------- ROUTES ----------------------
-
 router.get('/health', (ctx) => {
   ctx.body = { ok: true, service: "users", uptime: process.uptime() };
 });
@@ -72,8 +73,15 @@ router.post('/users', async (ctx) => {
 router.get('/', (ctx) => ctx.body = "Users service OK");
 
 // ----------------------
+// 🔥 Iniciar servidor SOLO cuando DB está lista
+// ----------------------
+async function start() {
+  await initDB();
 
-app.use(bodyParser());
-app.use(router.routes()).use(router.allowedMethods());
+  app.use(bodyParser());
+  app.use(router.routes()).use(router.allowedMethods());
 
-app.listen(3000, () => console.log("Users service running on port 3000"));
+  app.listen(3000, () => console.log("Users service running on port 3000"));
+}
+
+start();
