@@ -1,30 +1,42 @@
 // users/server.js
 
-const app = require('koa')();           // Koa v1 estilo original
-const router = require('koa-router')(); // koa-router v1: función, no clase
+const app = require('koa')();
+const router = require('koa-router')();
 const mysql = require('mysql2/promise');
 const fs = require('fs');
 
-// 🔐 La URL viene desde el Task Definition (ECS) via Terraform:
-// DATABASE_URL = mysql://admin:TU_PASSWORD@microforum-db...:3306/microforum
-const DATABASE_URL = process.env.DATABASE_URL;
+// Variables enviadas desde ECS Task Definition
+const DB_HOST = process.env.DB_HOST;
+const DB_USER = process.env.DB_USER || "admin";
+const DB_PASS = process.env.DB_PASS;
+const DB_NAME = process.env.DB_NAME || "microforum";
+const DB_PORT = process.env.DB_PORT || 3306;
 
 let db;
 
-// ----------------------
-// Conexión MySQL + seed desde db.json
-// ----------------------
+// -------------------------------------------
+// Conexión MySQL (sin DATABASE_URL)
+// -------------------------------------------
 async function initDB() {
-  if (!DATABASE_URL) {
-    console.error("❌ DATABASE_URL no está definido en las variables de entorno");
+
+  if (!DB_HOST || !DB_PASS) {
+    console.error("❌ Variables de entorno incompletas:", {
+      DB_HOST, DB_PASS
+    });
     return;
   }
 
   try {
-    db = await mysql.createConnection(DATABASE_URL);
+    db = await mysql.createConnection({
+      host: DB_HOST,
+      user: DB_USER,
+      password: DB_PASS,
+      database: DB_NAME,
+      port: DB_PORT
+    });
+
     console.log("📌 Conectado a MySQL RDS");
 
-    // Crear tabla si no existe
     await db.execute(`
       CREATE TABLE IF NOT EXISTS users (
         id INT PRIMARY KEY AUTO_INCREMENT,
@@ -35,31 +47,28 @@ async function initDB() {
 
     console.log("📦 Tabla 'users' lista");
 
-    // Seed inicial desde db.json si la tabla está vacía
+    // Seed inicial
     const [rows] = await db.query("SELECT COUNT(*) AS total FROM users");
     if (rows[0].total === 0) {
-      console.log("🌱 Insertando seed desde db.json...");
       const seed = JSON.parse(fs.readFileSync('./db.json')).users || [];
       for (const u of seed) {
-        await db.query(
-          "INSERT INTO users (name, email) VALUES (?, ?)",
-          [u.name, u.email]
-        );
+        await db.query("INSERT INTO users (name, email) VALUES (?, ?)", [u.name, u.email]);
       }
-      console.log("✅ Seed inicial insertado");
+      console.log("🌱 Seed inicial insertado");
     } else {
-      console.log(`ℹ Tabla users ya tiene ${rows[0].total} registros, no se inserta seed`);
+      console.log(`ℹ Tabla users ya tiene ${rows[0].total} registros`);
     }
+
   } catch (err) {
-    console.error("❌ Error inicializando DB:", err);
+    console.error("❌ Error conectando a MySQL:", err);
   }
 }
 
-initDB(); // Se ejecuta al arrancar el contenedor
+initDB();
 
-// ----------------------
-// Middleware de log (Koa v1: function * y this)
-// ----------------------
+// -------------------------------------------
+// Middleware log
+// -------------------------------------------
 app.use(function* (next) {
   const start = new Date;
   yield next;
@@ -67,38 +76,31 @@ app.use(function* (next) {
   console.log('%s %s - %s ms', this.method, this.url, ms);
 });
 
-// ----------------------
+// -------------------------------------------
 // Rutas
-// ----------------------
+// -------------------------------------------
 
-// Health check
 router.get('/health', function* () {
-  this.status = 200;
-  this.body = { ok: true, service: 'users', uptime: process.uptime() };
+  this.body = { ok: true, service: "users", uptime: process.uptime() };
 });
 
-// Obtener todos los usuarios
 router.get('/users', function* () {
   if (!db) {
     this.status = 500;
-    this.body = { error: 'DB no inicializada' };
+    this.body = { error: "DB no inicializada" };
     return;
   }
-
   const [rows] = yield db.query("SELECT * FROM users");
   this.body = rows;
 });
 
-// Raíz del servicio users
 router.get('/', function* () {
   this.body = "Users service OK (MySQL RDS)";
 });
 
-// ----------------------
-// Registrar rutas y levantar servidor
-// ----------------------
+// Registrar rutas
 app.use(router.routes());
 app.use(router.allowedMethods());
 
 app.listen(3000);
-console.log('Users worker started (port 3000)');
+console.log("Users worker started (port 3000)");
