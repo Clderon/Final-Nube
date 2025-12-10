@@ -20,3 +20,14 @@ variable "container_images" {
     threads = "172934159782.dkr.ecr.us-east-1.amazonaws.com/microforum-threads:latest"
   }
 }
+
+variable "db_host" {
+  description = "RDS endpoint host"
+  type        = string
+}
+
+variable "db_pass" {
+  description = "RDS root password"
+  type        = string
+  sensitive   = true
+}

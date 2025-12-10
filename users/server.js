@@ -1,49 +1,79 @@
 const Koa = require('koa');
 const Router = require('koa-router');
-const { PrismaClient } = require('@prisma/client');
+const bodyParser = require('koa-bodyparser');
+const mysql = require('mysql2/promise');
+const fs = require('fs');
 
 const app = new Koa();
 const router = new Router();
-const prisma = new PrismaClient();
 
-// Log de requests
-app.use(async (ctx, next) => {
-  const start = Date.now();
-  await next();
-  console.log(`${ctx.method} ${ctx.url} - ${Date.now() - start}ms`);
-});
+// 🔥 Variables vienen del Task Definition en ECS
+const DB_HOST = process.env.DB_HOST;
+const DB_USER = "admin";
+const DB_PASS = process.env.DB_PASS;
+const DB_NAME = "microforum";
 
-// Health check
-router.get('/health', (ctx) => {
-  ctx.body = { ok: true, service: 'users', uptime: process.uptime() };
-});
+let db;
 
-// Obtener todos los usuarios
-router.get('/users', async (ctx) => {
-  ctx.body = await prisma.user.findMany();
-});
-
-// Obtener usuario por ID
-router.get('/users/:userId', async (ctx) => {
-  ctx.body = await prisma.user.findUnique({
-    where: { id: Number(ctx.params.userId) }
+// ----------------------
+// Conexión MySQL
+// ----------------------
+async function initDB() {
+  db = await mysql.createConnection({
+    host: DB_HOST,
+    user: DB_USER,
+    password: DB_PASS,
+    database: DB_NAME
   });
+
+  console.log("📌 Conectado a MySQL RDS");
+
+  // Crear tabla si no existe
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      name VARCHAR(100),
+      email VARCHAR(100)
+    )
+  `);
+
+  console.log("📦 Tabla users lista");
+
+  // Cargar JSON si la tabla está vacía
+  const [rows] = await db.query("SELECT COUNT(*) AS total FROM users");
+  if (rows[0].total === 0) {
+    const seed = JSON.parse(fs.readFileSync('./db.json')).users || [];
+    for (const u of seed) {
+      await db.query("INSERT INTO users (name, email) VALUES (?, ?)", [u.name, u.email]);
+    }
+    console.log("🌱 Seed inicial insertado desde db.json");
+  }
+}
+
+initDB();
+
+// ---------------------- ROUTES ----------------------
+
+router.get('/health', (ctx) => {
+  ctx.body = { ok: true, service: "users", uptime: process.uptime() };
 });
 
-// Crear usuario
+router.get('/users', async (ctx) => {
+  const [rows] = await db.query("SELECT * FROM users");
+  ctx.body = rows;
+});
+
 router.post('/users', async (ctx) => {
-  const data = ctx.request.body; // requiere bodyparser
-  ctx.body = await prisma.user.create({ data });
+  const { name, email } = ctx.request.body;
+  await db.query("INSERT INTO users (name, email) VALUES (?, ?)", [name, email]);
+  ctx.body = { message: "Usuario creado" };
 });
 
-// Root
-router.get('/', (ctx) => {
-  ctx.body = "Users Service - OK";
-});
+router.get('/', (ctx) => ctx.body = "Users service OK");
 
-app
-  .use(require('koa-bodyparser')())
-  .use(router.routes())
-  .use(router.allowedMethods());
+// ----------------------
 
-app.listen(3000, () => console.log('Users service running on port 3000'));
+app.use(bodyParser());
+app.use(router.routes()).use(router.allowedMethods());
+
+app.listen(3000, () => console.log("Users service running on port 3000"));
