@@ -357,6 +357,58 @@ resource "aws_iam_role_policy_attachment" "ecs_execution_role_policy" {
 }
 
 # ----------------------
+# RDS MySQL
+# ----------------------
+
+resource "aws_security_group" "rds_sg" {
+  name        = "${var.project_name}-rds-sg"
+  description = "Permitir acceso MySQL desde ECS tasks"
+  vpc_id      = aws_vpc.this.id
+
+  ingress {
+    description     = "MySQL from ECS"
+    from_port       = 3306
+    to_port         = 3306
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ecs_tasks_sg.id]
+  }
+
+  tags = {
+    Name = "${var.project_name}-rds-sg"
+  }
+}
+
+resource "aws_db_subnet_group" "default" {
+  name       = "${var.project_name}-db-subnet-group"
+  subnet_ids = aws_subnet.private[*].id
+
+  tags = {
+    Name = "${var.project_name}-db-subnet-group"
+  }
+}
+
+resource "aws_db_instance" "default" {
+  identifier           = "${var.project_name}-db"
+  allocated_storage    = 20
+  storage_type         = "gp2"
+  engine               = "mysql"
+  engine_version       = "8.0"
+  instance_class       = "db.t3.micro"
+  db_name              = "microforum"
+  username             = var.db_username
+  password             = var.db_password
+  parameter_group_name = "default.mysql8.0"
+  skip_final_snapshot  = true
+  publicly_accessible  = false
+  vpc_security_group_ids = [aws_security_group.rds_sg.id]
+  db_subnet_group_name   = aws_db_subnet_group.default.name
+
+  tags = {
+    Name = "${var.project_name}-db"
+  }
+}
+
+# ----------------------
 # CloudWatch Logs
 # ----------------------
 resource "aws_cloudwatch_log_group" "ecs" {
@@ -388,6 +440,12 @@ resource "aws_ecs_task_definition" "service" {
           hostPort      = 3000
           protocol      = "tcp"
         }
+      ]
+      environment = [
+        { name = "DB_HOST", value = aws_db_instance.default.address },
+        { name = "DB_USER", value = var.db_username },
+        { name = "DB_PASS", value = var.db_password },
+        { name = "DB_NAME", value = "microforum" }
       ]
       logConfiguration = {
         logDriver = "awslogs"

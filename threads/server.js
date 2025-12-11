@@ -1,6 +1,46 @@
 const app = require('koa')();
 const router = require('koa-router')();
-const db = require('./db.json');
+const dbData = require('./db.json');
+const mysql = require('mysql2/promise');
+
+// Configuración de la conexión a Base de Datos (RDS)
+const pool = mysql.createPool({
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASS,
+  database: process.env.DB_NAME,
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0
+});
+
+// Inicialización: Crea la tabla y carga datos si está vacía
+async function initDb() {
+  try {
+    const connection = await pool.getConnection();
+    // Crear tabla si no existe
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS threads (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        title TEXT,
+        createdBy INT
+      )
+    `);
+    // Verificar si hay datos
+    const [rows] = await connection.query('SELECT COUNT(*) as count FROM threads');
+    if (rows[0].count === 0) {
+      console.log('Tabla threads vacía. Insertando datos iniciales desde db.json...');
+      for (const t of dbData.threads) {
+        await connection.query('INSERT INTO threads (id, title, createdBy) VALUES (?, ?, ?)', [t.id, t.title, t.createdBy]);
+      }
+    }
+    connection.release();
+    console.log('Base de datos threads inicializada correctamente.');
+  } catch (err) {
+    console.error('Error inicializando DB:', err);
+  }
+}
+initDb();
 
 // Log requests
 app.use(function *(next){
@@ -20,12 +60,14 @@ router.get('/health', function *() {
 // -------- API-style routes --------
 //
 router.get('/api/threads', function *() {
-  this.body = db.threads;
+  const [rows] = yield pool.query('SELECT * FROM threads');
+  this.body = rows;
 });
 
 router.get('/api/threads/:threadId', function *() {
   const id = parseInt(this.params.threadId);
-  this.body = db.threads.find((thread) => thread.id == id);
+  const [rows] = yield pool.query('SELECT * FROM threads WHERE id = ?', [id]);
+  this.body = rows[0];
 });
 
 router.get('/api/', function *() {
@@ -36,12 +78,14 @@ router.get('/api/', function *() {
 // -------- Friendly routes for ALB (/threads...) --------
 //
 router.get('/threads', function *() {
-  this.body = db.threads;
+  const [rows] = yield pool.query('SELECT * FROM threads');
+  this.body = rows;
 });
 
 router.get('/threads/:threadId', function *() {
   const id = parseInt(this.params.threadId);
-  this.body = db.threads.find((thread) => thread.id == id);
+  const [rows] = yield pool.query('SELECT * FROM threads WHERE id = ?', [id]);
+  this.body = rows[0];
 });
 
 //

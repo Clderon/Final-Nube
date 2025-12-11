@@ -1,0 +1,65 @@
+name: Build and Deploy to ECS
+
+on:
+  push:
+    branches: [ main ]
+
+env:
+  AWS_REGION: us-east-1
+  PROJECT_NAME: microforum
+  ECR_REPO_PREFIX: microforum
+
+jobs:
+  build-and-deploy:
+    name: Build, push and update ECS (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [users, posts, threads]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION || env.AWS_REGION }}
+
+      - name: Get AWS Account ID
+        id: aws-account
+        run: |
+          echo "ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)" >> $GITHUB_ENV
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Ensure ECR repository exists
+        run: |
+          REPO_NAME="${{ env.ECR_REPO_PREFIX }}-${{ matrix.service }}"
+          aws ecr describe-repositories --repository-names $REPO_NAME >/dev/null 2>&1 || aws ecr create-repository --repository-name $REPO_NAME
+
+      - name: Build and push Docker image to ECR
+        uses: docker/build-push-action@v4
+        with:
+          context: ./${{ matrix.service }}
+          file: ./${{ matrix.service }}/Dockerfile
+          push: true
+          tags: |
+            ${{ env.ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO_PREFIX }}-${{ matrix.service }}:${{ github.sha }}
+            ${{ env.ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO_PREFIX }}-${{ matrix.service }}:latest
+
+      - name: Force new deployment on ECS service
+        run: |
+          CLUSTER="${{ env.PROJECT_NAME }}-ecs-cluster"
+          SERVICE="${{ env.PROJECT_NAME }}-${{ matrix.service }}-svc"
+          echo "Forcing new deployment: cluster=$CLUSTER service=$SERVICE"
+          aws ecs update-service --cluster "$CLUSTER" --service "$SERVICE" --force-new-deployment --region ${{ env.AWS_REGION }}
+
+      - name: Deployment status
+        run: |
+          CLUSTER="${{ env.PROJECT_NAME }}-ecs-cluster"
+          SERVICE="${{ env.PROJECT_NAME }}-${{ matrix.service }}-svc"
+          aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" --region ${{ env.AWS_REGION }} --query 'services[0].{status:status,desiredCount:desiredCount,runningCount:runningCount}' --output table || true

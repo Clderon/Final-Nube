@@ -1,6 +1,47 @@
 const app = require('koa')();
 const router = require('koa-router')();
-const db = require('./db.json');
+const dbData = require('./db.json');
+const mysql = require('mysql2/promise');
+
+// Configuración de la conexión a Base de Datos (RDS)
+const pool = mysql.createPool({
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASS,
+  database: process.env.DB_NAME,
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0
+});
+
+// Inicialización: Crea la tabla y carga datos si está vacía
+async function initDb() {
+  try {
+    const connection = await pool.getConnection();
+    // Crear tabla si no existe
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS posts (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        thread INT,
+        text TEXT,
+        user INT
+      )
+    `);
+    // Verificar si hay datos
+    const [rows] = await connection.query('SELECT COUNT(*) as count FROM posts');
+    if (rows[0].count === 0) {
+      console.log('Tabla vacía. Insertando datos iniciales desde db.json...');
+      for (const p of dbData.posts) {
+        await connection.query('INSERT INTO posts (thread, text, user) VALUES (?, ?, ?)', [p.thread, p.text, p.user]);
+      }
+    }
+    connection.release();
+    console.log('Base de datos posts inicializada correctamente.');
+  } catch (err) {
+    console.error('Error inicializando DB:', err);
+  }
+}
+initDb();
 
 // Log requests
 app.use(function *(next){
@@ -20,17 +61,20 @@ router.get('/health', function *() {
 // -------- API-style routes --------
 //
 router.get('/api/posts', function *() {
-  this.body = db.posts;
+  const [rows] = yield pool.query('SELECT * FROM posts');
+  this.body = rows;
 });
 
 router.get('/api/posts/in-thread/:threadId', function *() {
   const id = parseInt(this.params.threadId);
-  this.body = db.posts.filter((post) => post.thread == id);
+  const [rows] = yield pool.query('SELECT * FROM posts WHERE thread = ?', [id]);
+  this.body = rows;
 });
 
 router.get('/api/posts/by-user/:userId', function *() {
   const id = parseInt(this.params.userId);
-  this.body = db.posts.filter((post) => post.user == id);
+  const [rows] = yield pool.query('SELECT * FROM posts WHERE user = ?', [id]);
+  this.body = rows;
 });
 
 router.get('/api/', function *() {
@@ -41,17 +85,20 @@ router.get('/api/', function *() {
 // -------- Friendly routes for ALB (/posts...) --------
 //
 router.get('/posts', function *() {
-  this.body = db.posts;
+  const [rows] = yield pool.query('SELECT * FROM posts');
+  this.body = rows;
 });
 
 router.get('/posts/in-thread/:threadId', function *() {
   const id = parseInt(this.params.threadId);
-  this.body = db.posts.filter((post) => post.thread == id);
+  const [rows] = yield pool.query('SELECT * FROM posts WHERE thread = ?', [id]);
+  this.body = rows;
 });
 
 router.get('/posts/by-user/:userId', function *() {
   const id = parseInt(this.params.userId);
-  this.body = db.posts.filter((post) => post.user == id);
+  const [rows] = yield pool.query('SELECT * FROM posts WHERE user = ?', [id]);
+  this.body = rows;
 });
 
 //

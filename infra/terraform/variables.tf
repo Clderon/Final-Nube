@@ -26,3 +26,15 @@ variable "enable_codedeploy" {
   type        = bool
   default     = false
 }
+
+variable "db_username" {
+  description = "Usuario maestro de la base de datos"
+  type        = string
+  default     = "admin"
+}
+
+variable "db_password" {
+  description = "Contraseña maestra de la base de datos"
+  type        = string
+  sensitive   = true
+}
