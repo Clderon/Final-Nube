@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "@koa/router": "^15.0.0",
     "koa": "^1.2.5",
     "koa-router": "^5.4.0",
     "mysql2": "^3.15.3"

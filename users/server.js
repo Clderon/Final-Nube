@@ -1,3 +1,5 @@
+// users/server.js
+
 const app = require('koa')();
 const router = require('koa-router')();
 const dbData = require('./db.json');
@@ -115,5 +117,4 @@ app.use(router.routes());
 app.use(router.allowedMethods());
 
 app.listen(3000);
-
-console.log('Users worker started');
+console.log("Users worker started (port 3000)");

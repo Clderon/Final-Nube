@@ -1,3 +1,5 @@
+// posts/server.js
+
 const app = require('koa')();
 const router = require('koa-router')();
 const dbData = require('./db.json');
@@ -48,13 +50,15 @@ app.use(function *(next){
   const start = new Date;
   yield next;
   const ms = new Date - start;
-  console.log('%s %s - %s', this.method, this.url, ms);
+  console.log('%s %s - %s ms', this.method, this.url, ms);
 });
 
-// Health check
-router.get('/health', function *() {
-  this.status = 200;
-  this.body = { ok: true, service: 'posts', uptime: process.uptime() };
+// -------------------------------------------
+// Rutas
+// -------------------------------------------
+
+router.get('/health', function* () {
+  this.body = { ok: true, service: "posts", uptime: process.uptime() };
 });
 
 //
@@ -101,16 +105,10 @@ router.get('/posts/by-user/:userId', function *() {
   this.body = rows;
 });
 
-//
-// -------- Root --------
-//
-router.get('/', function *() {
-  this.body = "Ready to receive requests";
-});
-
+// Registrar rutas
+app.use(require('koa-bodyparser')());
 app.use(router.routes());
 app.use(router.allowedMethods());
 
 app.listen(3000);
-
-console.log('Posts worker started');
+console.log("Posts worker started (port 3000)");
