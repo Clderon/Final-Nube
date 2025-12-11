@@ -44,28 +44,6 @@ async function initDb() {
 }
 initDb();
 
-    // Seed inicial
-    const [rows] = await db.query("SELECT COUNT(*) AS total FROM threads");
-    if (rows[0].total === 0) {
-      const seed = JSON.parse(fs.readFileSync('./db.json')).threads || [];
-      for (const t of seed) {
-        await db.query("INSERT INTO threads (title, author) VALUES (?, ?)", [
-          t.title,
-          t.author
-        ]);
-      }
-      console.log("🌱 Seed inicial de threads insertado");
-    } else {
-      console.log(`ℹ Tabla threads ya tiene ${rows[0].total} registros`);
-    }
-
-  } catch (err) {
-    console.error("❌ Error conectando MySQL (threads):", err);
-  }
-}
-
-initDB();
-
 // -------------------------------------------
 // Middleware log
 // -------------------------------------------
